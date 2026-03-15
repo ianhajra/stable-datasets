@@ -71,6 +71,16 @@ Available Datasets
    face_pointing
    rock_paper_scissor
    linnaeus5
+   cars3d
+   clevrer
+   dsprites
+   dsprites_color
+   dsprites_noise
+   dsprites_scream
+   not_mnist
+   shapes3d
+   small_norb
+   svhn
 
 .. note::
    Documentation is being added progressively, as datasets are ready for usage. Please only use datasets found in the documentation.
