@@ -57,6 +57,18 @@ The dataset spans multiple recorder versions covering different tasks:
      - BASALT 2022
      - Build a village house in style (12-minute time limit)
 
+.. image:: teasers/minecraft_new.gif
+   :align: center
+   :width: 90%
+
+.. image:: teasers/minecraft_house.gif
+   :align: center
+   :width: 90%
+
+.. image:: teasers/minecraft_mine.gif
+   :align: center
+   :width: 90%
+
 .. note::
 
    Video files are large (~50–100 MB per 5-minute segment). Use
