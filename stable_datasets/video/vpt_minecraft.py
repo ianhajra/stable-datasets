@@ -158,13 +158,16 @@ class VPTMinecraft:
 
         segments = []
         for relpath in relpaths:
+            # Some index files (e.g. BASALT) store relpaths with the file
+            # extension already included; strip it so URLs aren't doubled.
+            bare = relpath.removesuffix(".mp4").removesuffix(".jsonl")
             segments.append(
                 {
-                    "relpath": relpath,
-                    "video_url": f"{basedir}/{relpath}.mp4",
-                    "action_url": f"{basedir}/{relpath}.jsonl",
-                    "options_url": f"{basedir}/{relpath}-options.json",
-                    "checkpoint_url": f"{basedir}/{relpath}.zip",
+                    "relpath": bare,
+                    "video_url": f"{basedir}/{bare}.mp4",
+                    "action_url": f"{basedir}/{bare}.jsonl",
+                    "options_url": f"{basedir}/{bare}-options.json",
+                    "checkpoint_url": f"{basedir}/{bare}.zip",
                 }
             )
         return segments
