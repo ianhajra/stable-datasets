@@ -59,10 +59,14 @@ The dataset spans multiple recorder versions covering different tasks:
 
 .. note::
 
-   This dataset provides **URLs and metadata only**. Video files are large (~50–100 MB
-   per 5-minute segment). Use :py:meth:`~stable_datasets.video.vpt_minecraft.VPTMinecraft.fetch_video_chunk`
-   for a lightweight availability check, or download the ``.mp4`` files directly from the
-   returned URLs using a tool such as ``wget`` or ``yt-dlp``.
+   Video files are large (~50–100 MB per 5-minute segment). Use
+   :py:meth:`~stable_datasets.video.vpt_minecraft.VPTMinecraft.fetch_video_chunk`
+   for a lightweight availability check, or use
+   :py:meth:`~stable_datasets.video.vpt_minecraft.VPTMinecraft.download_segment` /
+   :py:meth:`~stable_datasets.video.vpt_minecraft.VPTMinecraft.download_segments`
+   to cache files locally. Action JSONL files (~1–2 MB each) can also be fetched
+   directly via :py:meth:`~stable_datasets.video.vpt_minecraft.VPTMinecraft.load_actions`
+   without any local download.
 
 Data Structure
 --------------
@@ -92,6 +96,39 @@ contains:
    * - ``checkpoint_url``
      - ``str``
      - Full URL to the ``.zip`` Minecraft world checkpoint
+
+Downloading Files
+-----------------
+
+Use ``download_segment()`` or ``download_segments()`` to cache segments locally.
+Files are stored under::
+
+    {dest_dir}/vpt_minecraft/{recorder-version}/{filename}
+
+where ``dest_dir`` defaults to ``~/.stable-datasets/downloads/``. Downloads are
+**idempotent** (existing files are skipped) and written **atomically** (via a
+temporary file renamed on completion) so interrupted downloads leave no corrupt files.
+A ``filelock`` prevents corruption when multiple processes download in parallel.
+
+The ``files`` parameter controls which file types are downloaded per segment:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 80
+
+   * - Value
+     - Downloaded file
+   * - ``"video"``
+     - ``.mp4`` video recording (~50–100 MB per segment)
+   * - ``"actions"``
+     - ``.jsonl`` action file (~1–2 MB per segment)
+   * - ``"options"``
+     - ``-options.json`` recorder configuration (< 1 KB)
+   * - ``"checkpoint"``
+     - ``.zip`` Minecraft world checkpoint (varies)
+
+``download_segments()`` runs downloads concurrently using a ``ThreadPoolExecutor``
+(default 4 workers) and displays a ``tqdm`` progress bar over segments.
 
 Action JSONL Structure
 ----------------------
@@ -177,6 +214,35 @@ Usage Example
     # Fetches only the first 4 KB via HTTP Range request
     chunk = VPTMinecraft.fetch_video_chunk(seg, num_bytes=4096)
     assert b"ftyp" in chunk[:12]   # valid MP4 header
+
+**Download a single segment on demand**
+
+.. code-block:: python
+
+    # Downloads video + actions to ~/.stable-datasets/downloads/ by default.
+    # Files already on disk are skipped automatically.
+    paths = VPTMinecraft.download_segment(seg)
+    print(paths["video"])    # PosixPath('~/.stable-datasets/downloads/vpt_minecraft/10.0/<name>.mp4')
+    print(paths["actions"])  # PosixPath('~/.stable-datasets/downloads/vpt_minecraft/10.0/<name>.jsonl')
+
+    # Download to a custom directory, actions only
+    paths = VPTMinecraft.download_segment(seg, dest_dir="/data/vpt", files=("actions",))
+
+**Download many segments in bulk (concurrent)**
+
+.. code-block:: python
+
+    segments = VPTMinecraft(version="v10")
+
+    # Download the first 20 segments (video + actions) using 4 threads
+    all_paths = VPTMinecraft.download_segments(segments, max_segments=20)
+    for paths in all_paths:
+        print(paths["video"], paths["actions"])
+
+    # Download actions only for all segments with 8 workers
+    all_paths = VPTMinecraft.download_segments(
+        segments, files=("actions",), max_workers=8
+    )
 
 **Load all available versions**
 
