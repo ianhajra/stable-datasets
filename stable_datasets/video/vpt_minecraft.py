@@ -35,10 +35,15 @@ Paper: https://cdn.openai.com/vpt/Paper.pdf
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 from typing import Any
 
 import requests
+from filelock import FileLock
+from tqdm import tqdm
 
 
 HOMEPAGE = "https://github.com/openai/Video-Pre-Training"
@@ -51,6 +56,14 @@ CITATION = """@article{baker2022video,
   journal={arXiv preprint arXiv:2206.11795},
   year={2022}
 }"""
+
+# Maps user-facing file-type names to the corresponding segment dict key.
+_FILE_KEY_MAP: dict[str, str] = {
+    "video": "video_url",
+    "actions": "action_url",
+    "options": "options_url",
+    "checkpoint": "checkpoint_url",
+}
 
 # Index JSON files listing available segments per recorder version.
 # Each JSON contains {"basedir": "...", "relpaths": [...]}.
@@ -253,6 +266,154 @@ class VPTMinecraft:
         response = requests.get(segment["video_url"], headers=headers, timeout=30)
         response.raise_for_status()
         return response.content
+
+    @staticmethod
+    def download_segment(
+        segment: dict[str, str],
+        dest_dir: str | Path | None = None,
+        files: tuple[str, ...] = ("video", "actions"),
+        progress_bar: bool = True,
+    ) -> dict[str, Path]:
+        """Download files for a single segment, skipping any already on disk.
+
+        Files are stored under::
+
+            {dest_dir}/vpt_minecraft/{recorder-version}/{filename}
+
+        Each file is written atomically (to a ``.tmp`` file, then renamed) and
+        protected by a ``filelock`` so concurrent callers never corrupt the
+        same file.
+
+        Args:
+            segment:      A segment dict returned by ``VPTMinecraft()``.
+            dest_dir:     Root directory for downloads.  Defaults to
+                          ``~/.stable-datasets/downloads/``.
+            files:        Which file types to download.  Any subset of
+                          ``"video"``, ``"actions"``, ``"options"``,
+                          ``"checkpoint"``.  Defaults to
+                          ``("video", "actions")``.
+            progress_bar: Show a ``tqdm`` progress bar per file.
+                          Defaults to ``True``.
+
+        Returns:
+            Dict mapping each requested file type to its local ``Path``.
+
+        Raises:
+            ValueError: If an unknown file type is requested.
+            requests.HTTPError: If a download fails.
+
+        Example:
+            >>> segments = VPTMinecraft(version="v10")
+            >>> paths = VPTMinecraft.download_segment(segments[0])
+            >>> print(paths["video"])    # Path to the local .mp4
+            >>> print(paths["actions"])  # Path to the local .jsonl
+        """
+        unknown = set(files) - set(_FILE_KEY_MAP)
+        if unknown:
+            raise ValueError(f"Unknown file types: {unknown}. Valid: {set(_FILE_KEY_MAP)}")
+
+        if dest_dir is None:
+            from stable_datasets.utils import _get_cache_dir
+
+            dest_dir = Path(os.path.expanduser(_get_cache_dir())) / "downloads"
+        dest_dir = Path(dest_dir)
+
+        version = segment["relpath"].split("/")[0]
+        local_paths: dict[str, Path] = {}
+
+        for file_type in files:
+            url = segment[_FILE_KEY_MAP[file_type]]
+            filename = url.rsplit("/", 1)[-1]
+            dest = dest_dir / "vpt_minecraft" / version / filename
+            dest.parent.mkdir(parents=True, exist_ok=True)
+
+            lock_path = dest.with_suffix(dest.suffix + ".lock")
+            tmp_path = dest.with_suffix(dest.suffix + ".tmp")
+
+            with FileLock(lock_path):
+                if not dest.exists():
+                    try:
+                        with requests.get(url, stream=True, timeout=(10, 300)) as resp:
+                            resp.raise_for_status()
+                            total = int(resp.headers.get("content-length", 0) or 0)
+                            with (
+                                open(tmp_path, "wb") as f,
+                                tqdm(
+                                    desc=f"{file_type}: {filename}",
+                                    total=total or None,
+                                    unit="B",
+                                    unit_scale=True,
+                                    unit_divisor=1024,
+                                    disable=not progress_bar,
+                                ) as bar,
+                            ):
+                                for chunk in resp.iter_content(chunk_size=65536):
+                                    if chunk:
+                                        f.write(chunk)
+                                        bar.update(len(chunk))
+                        tmp_path.replace(dest)
+                    except Exception:
+                        if tmp_path.exists():
+                            tmp_path.unlink()
+                        raise
+
+            local_paths[file_type] = dest
+
+        return local_paths
+
+    @staticmethod
+    def download_segments(
+        segments: list[dict[str, str]],
+        dest_dir: str | Path | None = None,
+        files: tuple[str, ...] = ("video", "actions"),
+        max_segments: int | None = None,
+        max_workers: int = 4,
+    ) -> list[dict[str, Path]]:
+        """Download files for multiple segments concurrently.
+
+        Iterates over ``segments`` (optionally capped by ``max_segments``) and
+        downloads the requested file types using a thread pool.
+        Already-cached files are skipped automatically.
+
+        Args:
+            segments:     List of segment dicts returned by ``VPTMinecraft()``.
+            dest_dir:     Root directory for downloads.  Defaults to
+                          ``~/.stable-datasets/downloads/``.
+            files:        Which file types to download per segment.  Any subset
+                          of ``"video"``, ``"actions"``, ``"options"``,
+                          ``"checkpoint"``.  Defaults to
+                          ``("video", "actions")``.
+            max_segments: Maximum number of segments to download.  ``None``
+                          downloads all segments in the list.
+            max_workers:  Number of concurrent download threads.  Defaults to 4.
+
+        Returns:
+            List of dicts (one per segment, in input order) mapping file type
+            to its local ``Path``.
+
+        Example:
+            >>> segments = VPTMinecraft(version="v10")
+            >>> all_paths = VPTMinecraft.download_segments(
+            ...     segments, max_segments=10
+            ... )
+            >>> for paths in all_paths:
+            ...     print(paths["video"], paths["actions"])
+        """
+        subset = list(VPTMinecraft.iter_segments(segments, max_segments=max_segments))
+        results: list[dict[str, Path]] = [{}] * len(subset)
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_idx = {
+                executor.submit(VPTMinecraft.download_segment, seg, dest_dir, files, False): i
+                for i, seg in enumerate(subset)
+            }
+            with tqdm(total=len(subset), desc="Downloading segments", unit="seg") as bar:
+                for future in as_completed(future_to_idx):
+                    idx = future_to_idx[future]
+                    results[idx] = future.result()
+                    bar.update(1)
+
+        return results
 
     @staticmethod
     def parse_relpath(relpath: str) -> dict[str, str]:

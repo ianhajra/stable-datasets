@@ -179,6 +179,174 @@ class TestVPTMinecraftMetadata:
         assert actions[0]["tick"] == 0
 
 
+class TestVPTMinecraftDownload:
+    """Unit tests for download_segment / download_segments (no real network)."""
+
+    def test_download_segment_unknown_file_type_raises(self):
+        """Test that requesting an unknown file type raises ValueError."""
+        seg = {
+            "relpath": "10.0/test-aabbccddeeff-20220101-010101",
+            "video_url": "https://example.com/test.mp4",
+            "action_url": "https://example.com/test.jsonl",
+            "options_url": "https://example.com/test-options.json",
+            "checkpoint_url": "https://example.com/test.zip",
+        }
+        with pytest.raises(ValueError, match="Unknown file types"):
+            VPTMinecraft.download_segment(seg, files=("video", "nonexistent"))
+
+    def test_download_segment_skips_existing_file(self, tmp_path):
+        """Test that an already-downloaded file is not re-fetched."""
+        seg = {
+            "relpath": "10.0/alias-aabbccddeeff-20220101-010101",
+            "video_url": "https://example.com/10.0/alias-aabbccddeeff-20220101-010101.mp4",
+            "action_url": "https://example.com/10.0/alias-aabbccddeeff-20220101-010101.jsonl",
+            "options_url": "https://example.com/10.0/alias-aabbccddeeff-20220101-010101-options.json",
+            "checkpoint_url": "https://example.com/10.0/alias-aabbccddeeff-20220101-010101.zip",
+        }
+        # Pre-create the expected destination file
+        dest = tmp_path / "vpt_minecraft" / "10.0" / "alias-aabbccddeeff-20220101-010101.jsonl"
+        dest.parent.mkdir(parents=True)
+        dest.write_text("existing content")
+
+        with patch("stable_datasets.video.vpt_minecraft.requests.get") as mock_get:
+            paths = VPTMinecraft.download_segment(seg, dest_dir=tmp_path, files=("actions",))
+
+        mock_get.assert_not_called()
+        assert paths["actions"] == dest
+
+    def test_download_segment_writes_file(self, tmp_path):
+        """Test that a missing file is downloaded and written correctly."""
+        seg = {
+            "relpath": "10.0/alias-aabbccddeeff-20220101-010101",
+            "video_url": "https://example.com/10.0/alias-aabbccddeeff-20220101-010101.mp4",
+            "action_url": "https://example.com/10.0/alias-aabbccddeeff-20220101-010101.jsonl",
+            "options_url": "https://example.com/10.0/alias-aabbccddeeff-20220101-010101-options.json",
+            "checkpoint_url": "https://example.com/10.0/alias-aabbccddeeff-20220101-010101.zip",
+        }
+        content = b'{"tick": 0}\n{"tick": 1}\n'
+        mock_response = MagicMock()
+        mock_response.headers = {"content-length": str(len(content))}
+        mock_response.iter_content.return_value = [content]
+        mock_response.raise_for_status = MagicMock()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch("stable_datasets.video.vpt_minecraft.requests.get", return_value=mock_response):
+            paths = VPTMinecraft.download_segment(seg, dest_dir=tmp_path, files=("actions",), progress_bar=False)
+
+        assert "actions" in paths
+        assert paths["actions"].exists()
+        assert paths["actions"].read_bytes() == content
+
+    def test_download_segment_cleans_up_tmp_on_failure(self, tmp_path):
+        """Test that the .tmp file is removed if a download fails."""
+        seg = {
+            "relpath": "10.0/alias-aabbccddeeff-20220101-010101",
+            "video_url": "https://example.com/10.0/alias-aabbccddeeff-20220101-010101.mp4",
+            "action_url": "https://example.com/10.0/alias-aabbccddeeff-20220101-010101.jsonl",
+            "options_url": "https://example.com/10.0/alias-aabbccddeeff-20220101-010101-options.json",
+            "checkpoint_url": "https://example.com/10.0/alias-aabbccddeeff-20220101-010101.zip",
+        }
+        import requests as req
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status.side_effect = req.HTTPError("404")
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch("stable_datasets.video.vpt_minecraft.requests.get", return_value=mock_response):
+            with pytest.raises(req.HTTPError):
+                VPTMinecraft.download_segment(seg, dest_dir=tmp_path, files=("actions",), progress_bar=False)
+
+        # No leftover .tmp files
+        tmp_files = list(tmp_path.rglob("*.tmp"))
+        assert tmp_files == [], f"Leftover tmp files: {tmp_files}"
+
+    def test_download_segment_returns_correct_path_structure(self, tmp_path):
+        """Test that downloaded files land under vpt_minecraft/{version}/."""
+        seg = {
+            "relpath": "8.0/builder-aabbccddeeff-20220301-120000",
+            "video_url": "https://example.com/8.0/builder-aabbccddeeff-20220301-120000.mp4",
+            "action_url": "https://example.com/8.0/builder-aabbccddeeff-20220301-120000.jsonl",
+            "options_url": "https://example.com/8.0/builder-aabbccddeeff-20220301-120000-options.json",
+            "checkpoint_url": "https://example.com/8.0/builder-aabbccddeeff-20220301-120000.zip",
+        }
+        content = b"fake video bytes"
+        mock_response = MagicMock()
+        mock_response.headers = {"content-length": str(len(content))}
+        mock_response.iter_content.return_value = [content]
+        mock_response.raise_for_status = MagicMock()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch("stable_datasets.video.vpt_minecraft.requests.get", return_value=mock_response):
+            paths = VPTMinecraft.download_segment(seg, dest_dir=tmp_path, files=("video",), progress_bar=False)
+
+        assert paths["video"].parent == tmp_path / "vpt_minecraft" / "8.0"
+
+    def test_download_segments_returns_one_result_per_segment(self, tmp_path):
+        """Test that download_segments returns a result for each input segment."""
+        fake_segments = [
+            {
+                "relpath": f"10.0/alias-{'a' * 12}-2022010{i}-010101",
+                "video_url": f"https://example.com/10.0/seg{i}.mp4",
+                "action_url": f"https://example.com/10.0/seg{i}.jsonl",
+                "options_url": f"https://example.com/10.0/seg{i}-options.json",
+                "checkpoint_url": f"https://example.com/10.0/seg{i}.zip",
+            }
+            for i in range(3)
+        ]
+        content = b"data"
+        mock_response = MagicMock()
+        mock_response.headers = {"content-length": str(len(content))}
+        mock_response.iter_content.return_value = [content]
+        mock_response.raise_for_status = MagicMock()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch("stable_datasets.video.vpt_minecraft.requests.get", return_value=mock_response):
+            results = VPTMinecraft.download_segments(
+                fake_segments,
+                dest_dir=tmp_path,
+                files=("actions",),
+                max_workers=2,
+            )
+
+        assert len(results) == 3
+        for r in results:
+            assert "actions" in r
+
+    def test_download_segments_respects_max_segments(self, tmp_path):
+        """Test that max_segments caps the number of segments downloaded."""
+        fake_segments = [
+            {
+                "relpath": f"10.0/alias-{'a' * 12}-2022010{i}-010101",
+                "video_url": f"https://example.com/10.0/seg{i}.mp4",
+                "action_url": f"https://example.com/10.0/seg{i}.jsonl",
+                "options_url": f"https://example.com/10.0/seg{i}-options.json",
+                "checkpoint_url": f"https://example.com/10.0/seg{i}.zip",
+            }
+            for i in range(5)
+        ]
+        content = b"data"
+        mock_response = MagicMock()
+        mock_response.headers = {"content-length": str(len(content))}
+        mock_response.iter_content.return_value = [content]
+        mock_response.raise_for_status = MagicMock()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch("stable_datasets.video.vpt_minecraft.requests.get", return_value=mock_response):
+            results = VPTMinecraft.download_segments(
+                fake_segments,
+                dest_dir=tmp_path,
+                files=("actions",),
+                max_segments=2,
+            )
+
+        assert len(results) == 2
+
+
 @pytest.mark.large
 class TestVPTMinecraftNetwork:
     """Tests that require live network access to the OpenAI public mirror."""
