@@ -29,6 +29,10 @@ Split sizes:
 - **Val**: 15,000 images · 149,991 questions · scene graphs · functional programs
 - **Test**: 15,000 images · 14,988 questions (no answers or scene annotations)
 
+.. image:: teasers/clevr_teaser.png
+   :align: center
+   :width: 90%
+
 Data Structure
 --------------
 
@@ -79,8 +83,8 @@ Scene JSON Structure
             },
             ...
         ],
-        "relations": {
-            "left":   [[...], ...],  # adjacency lists: relations["left"][i] = indices of objects left of objects[i]
+        "relationships": {
+            "left":   [[...], ...],  # adjacency lists: relationships["left"][i] = indices of objects left of objects[i]
             "right":  [[...], ...],
             "front":  [[...], ...],
             "behind": [[...], ...]
