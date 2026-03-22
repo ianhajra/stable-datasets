@@ -49,7 +49,7 @@ def test_clevr_dataset():
     scene = json.loads(sample["scene_json"])
     assert isinstance(scene, dict), f"scene_json should decode to a dict, got {type(scene)}."
     assert "objects" in scene, "scene should have an 'objects' key."
-    assert "relations" in scene, "scene should have a 'relations' key."
+    assert "relationships" in scene, "scene should have a 'relationships' key."
     assert isinstance(scene["objects"], list), "'objects' should be a list."
 
     # Test 7: Validate at least one object has the expected attribute keys
