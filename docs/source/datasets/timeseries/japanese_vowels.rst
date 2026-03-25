@@ -73,12 +73,10 @@ Citation
 
 .. code-block:: bibtex
 
-    @inproceedings{kudo1999multidimensional,
-        title={Multidimensional curve classification using passing-through regions},
-        author={Kudo, Mineichi and Toyama, Jun and Shimbo, Masaru},
-        booktitle={Pattern Recognition Letters},
-        volume={20},
-        number={11-13},
-        pages={1103--1111},
-        year={1999}
+    @misc{japanese_vowels_128,
+    author       = {Kudo, Mineichi, Toyama, Jun, and Shimbo, Masaru},
+    title        = {{Japanese Vowels}},
+    year         = {1999},
+    howpublished = {UCI Machine Learning Repository},
+    note         = {{DOI}: https://doi.org/10.24432/C5NS47}
     }
