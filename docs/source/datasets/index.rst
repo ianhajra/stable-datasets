@@ -44,33 +44,39 @@ Available Datasets
    :maxdepth: 1
    :caption: Image Classification Datasets
 
-   arabic_characters
-   arabic_digits
-   cifar10
-   cifar100
-   cifar10_c
-   cifar100_c
-   cars196
-   dtd
-   fashion_mnist
-   k_mnist
-   medmnist
-   awa2
-   beans
-   stl10
-   tiny_imagenet
-   tiny_imagenet_c
-   e_mnist
-   fgvc_aircraft
-   flowers102
-   food101
-   cub200
-   country211
-   galaxy10
-   hasy_v2
-   face_pointing
-   rock_paper_scissor
-   linnaeus5
+   images/arabic_characters
+   images/arabic_digits
+   images/cifar10
+   images/cifar100
+   images/cifar10_c
+   images/cifar100_c
+   images/cars196
+   images/dtd
+   images/fashion_mnist
+   images/k_mnist
+   images/medmnist
+   images/awa2
+   images/beans
+   images/stl10
+   images/tiny_imagenet
+   images/tiny_imagenet_c
+   images/e_mnist
+   images/fgvc_aircraft
+   images/flowers102
+   images/food101
+   images/cub200
+   images/country211
+   images/galaxy10
+   images/hasy_v2
+   images/face_pointing
+   images/rock_paper_scissor
+   images/linnaeus5
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Time Series Datasets
+
+   timeseries/japanese_vowels
 
 .. note::
    Documentation is being added progressively, as datasets are ready for usage. Please only use datasets found in the documentation.
