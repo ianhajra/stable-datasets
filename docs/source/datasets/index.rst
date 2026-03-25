@@ -77,6 +77,7 @@ Available Datasets
    :caption: Time Series Datasets
 
    timeseries/japanese_vowels
+   timeseries/mosquito_sound
    timeseries/phoneme
 
 .. note::
