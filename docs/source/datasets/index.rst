@@ -77,6 +77,7 @@ Available Datasets
    :caption: Time Series Datasets
 
    timeseries/japanese_vowels
+   timeseries/phoneme
 
 .. note::
    Documentation is being added progressively, as datasets are ready for usage. Please only use datasets found in the documentation.

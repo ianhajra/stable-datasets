@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from .JapaneseVowels import JapaneseVowels as JapaneseVowels
+from .Phoneme import Phoneme as Phoneme
 
 # from . import (
 #    VoiceGenderDetection,
